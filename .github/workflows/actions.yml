@@ -18,17 +18,6 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
           
-      - name: Add server to known_hosts
-        run: |
-          ssh-keyscan -H 34.176.249.207 >> ~/.ssh/known_hosts
-
       - name: Deploy to Server
         run: |
-          ssh sosasjose.01@34.176.249.207 '
-            cd /home/sosasjose.01/docker-gcp-deployment &&
-            git config --global credential.helper store &&
-            git config --global user.email "actions@github.com" &&
-            git config --global user.name "GitHub Actions" &&
-            git pull https://${GITHUB_ACTOR}:${{ secrets.GITHUB_TOKEN }}@github.com/Jose-sosa-82/docker-gcp-deployment.git main &&
-            docker compose up -d --build
-          '
+          ssh sosasjose.01@34.57.24.211 'cd /home/sosasjose.01/docker-gcp-deployment && git pull origin main && docker compose up -d --build'          
