@@ -5,23 +5,65 @@ on:
     branches:
       - main
 
+env:
+  SSH_HOST: 34.57.24.211
+  SSH_PORT: '22'
+  SSH_USER: sosasjose.01
+  APP_DIR: /home/sosasjose.01/docker-gcp-deployment
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.5.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
 
       - name: Add server to known_hosts
         run: |
-          ssh-keyscan -H 34.57.24.211 >> ~/.ssh/known_hosts
-          
-      - name: Deploy to Server
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H -p ${{ env.SSH_PORT }} ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Prepare target dir on server
         run: |
-          ssh sosasjose.01@34.57.24.211 'cd /home/sosasjose.01/docker-gcp-deployment && git pull origin main && docker compose up -d --build'          
+          ssh -p ${{ env.SSH_PORT }} -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
+              set -e
+              # Asegura rsync y el directorio destino
+              sudo apt-get update -y >/dev/null 2>&1 || true
+              sudo apt-get install -y rsync >/dev/null 2>&1 || true
+              mkdir -p '${{ env.APP_DIR }}'
+              sudo chown -R \$USER:\$USER '${{ env.APP_DIR }}'
+            "
+
+      - name: Upload code (rsync instead of git pull)
+        run: |
+          rsync -az -e 'ssh -p ${{ env.SSH_PORT }} -o BatchMode=yes -o StrictHostKeyChecking=yes' \
+            --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            ./ \
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:'${{ env.APP_DIR }}/'
+
+      - name: Deploy
+        run: |
+          ssh -p ${{ env.SSH_PORT }} -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
+              set -e
+              cd '${{ env.APP_DIR }}'
+              if docker compose version >/dev/null 2>&1; then
+                docker compose up -d --build
+              elif command -v docker-compose >/dev/null 2>&1; then
+                docker-compose up -d --build
+              else
+                echo 'Docker Compose no está instalado en el servidor.' >&2
+                exit 1
+              fi
+            "
