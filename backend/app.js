@@ -9,6 +9,7 @@ const tasks = [
   { id: 3, title: 'Ejercicio diario' },
   { id: 4, title: 'Desplegar en GCP' },
   { id: 5, title: 'Trabajo con dockers' },
+  { id: 6, title: 'Configuracion Action.yml' },
 ];
 
 // Ruta para obtener la lista de tareas
