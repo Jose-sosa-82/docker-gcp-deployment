@@ -31,14 +31,30 @@ jobs:
           ssh-keyscan -H -p ${{ env.SSH_PORT }} ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Prepare target dir on server
+      - name: Prepare target dir on server (docker perms + rsync)
         run: |
           ssh -p ${{ env.SSH_PORT }} -o BatchMode=yes -o StrictHostKeyChecking=yes \
             ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
               set -e
-              # Asegura rsync y el directorio destino
+              # Herramientas para sync
               sudo apt-get update -y >/dev/null 2>&1 || true
               sudo apt-get install -y rsync >/dev/null 2>&1 || true
+
+              # Verifica Docker instalado
+              if ! command -v docker >/dev/null 2>&1; then
+                echo 'Docker no está instalado en el servidor.' >&2
+                exit 1
+              fi
+
+              # Asegura servicio y grupo docker
+              sudo systemctl enable --now docker || true
+              sudo getent group docker >/dev/null || sudo groupadd docker
+              if ! groups \$USER | grep -q docker; then
+                sudo usermod -aG docker \$USER
+                echo 'Se añadió \$USER al grupo docker.'
+              fi
+
+              # Directorio de la app y permisos
               mkdir -p '${{ env.APP_DIR }}'
               sudo chown -R \$USER:\$USER '${{ env.APP_DIR }}'
             "
@@ -58,10 +74,13 @@ jobs:
             ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
               set -e
               cd '${{ env.APP_DIR }}'
+
+              # Detecta compose (plugin v2 o binario v1)
               if docker compose version >/dev/null 2>&1; then
-                docker compose up -d --build
+                # Intenta sin sudo; si falla por permisos, reintenta con sudo
+                (docker compose up -d --build) || (echo 'Retry con sudo...' && sudo docker compose up -d --build)
               elif command -v docker-compose >/dev/null 2>&1; then
-                docker-compose up -d --build
+                (docker-compose up -d --build) || (echo 'Retry con sudo...' && sudo docker-compose up -d --build)
               else
                 echo 'Docker Compose no está instalado en el servidor.' >&2
                 exit 1
